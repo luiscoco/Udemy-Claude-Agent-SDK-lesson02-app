@@ -1,0 +1,58 @@
+[
+  {
+    "number": "01",
+    "title": "Load configuration before the agent starts",
+    "source": "package.json",
+    "explanation": "The npm command loads the local .env into the host process. query inherits the server-side API key. The browser sees only a ready flag and model name.",
+    "code": "tsx --env-file-if-exists=.env src/server.ts",
+    "language": "powershell"
+  },
+  {
+    "number": "02",
+    "title": "Validate the student prompt",
+    "source": "src/agent.ts",
+    "explanation": "Reject empty or oversized input before the SDK starts. This keeps the classroom experiment bounded.",
+    "code": "export function validatePrompt(value: unknown): string {\n  if (typeof value !== \"string\" || !value.trim()) throw new Error(\"Enter a prompt first.\");\n  if (value.trim().length > 2000) throw new Error(\"Keep the prompt under 2,000 characters.\");\n  return value.trim();\n}",
+    "language": "typescript"
+  },
+  {
+    "number": "03",
+    "title": "Call query once with explicit options",
+    "source": "src/agent.ts",
+    "explanation": "The prompt is a string. tools: [] disables built-in tools; allowedTools: [] would only change approvals and is not the same setting. This lesson also ignores filesystem settings, configures no MCP servers or plugins, disables transcript persistence, and uses one turn with a small SDK budget. The SDK manages its model interaction; there is no manual Messages API tool loop.",
+    "code": "const conversation = query({\n    prompt,\n    options: {\n      model: MODEL,\n      tools: [],\n      settingSources: [],\n      mcpServers: {},\n      plugins: [],\n      persistSession: false,\n      maxTurns: 1,\n      maxBudgetUsd: 0.10,\n      cwd,\n      abortController,\n    },\n  });",
+    "language": "typescript"
+  },
+  {
+    "number": "04",
+    "title": "Consume the async iterator",
+    "source": "src/agent.ts",
+    "explanation": "The for-await loop reads messages from the one query call; it does not make a new query for every message. A missing result is incomplete observation. finally closes the SDK query object.",
+    "code": "try {\n    for await (const message of conversation) {\n      for (const event of projectMessage(message)) {\n        if (event.type === \"result\") gotResult = true;\n        emit(event);\n      }\n    }\n    if (!gotResult && !abortController.signal.aborted) throw new Error(\"The SDK ended without a result message.\");\n  } finally {\n    conversation.close();\n  }\n}",
+    "language": "typescript"
+  },
+  {
+    "number": "05",
+    "title": "Separate text from the final outcome",
+    "source": "src/agent.ts",
+    "explanation": "Initialization identifies the selected model and tools. Assistant text becomes the answer. Only a result with subtype success and is_error false establishes success. Preserve other subtypes rather than relabelling them as completed.",
+    "code": "export function projectMessage(message: SDKMessage): LabEvent[] {\n  if (message.type === \"system\" && message.subtype === \"init\") {\n    return [{ type: \"initialized\", model: message.model, tools: message.tools.length }];\n  }\n  if (message.type === \"assistant\") {\n    return message.message.content.flatMap((block) =>\n      block.type === \"text\" ? [{ type: \"answer\" as const, text: block.text }] : [],\n    );\n  }\n  if (message.type === \"result\") {\n    const success = message.subtype === \"success\" && !message.is_error;\n    return [{ type: \"result\", status: success ? \"success\" : message.subtype === \"success\" ? \"error\" : message.subtype,\n      text: message.subtype === \"success\" ? message.result : message.errors.join(\"\\n\"),\n      sessionId: message.session_id, costUsd: message.total_cost_usd, turns: message.num_turns }];\n  }\n  return [];\n}",
+    "language": "typescript"
+  },
+  {
+    "number": "06",
+    "title": "Forward selected evidence to the page",
+    "source": "src/server.ts",
+    "explanation": "The server writes JSON lines while the SDK runs. The response close event and a 90-second timeout abort this sample\u2019s local run; finally releases the busy flag. These controls are web-app plumbing around the simple SDK example.",
+    "code": "const controller = new AbortController();\n      const timer = setTimeout(() => controller.abort(), 90_000);\n      res.on(\"close\", () => { if (!res.writableEnded) controller.abort(); });\n      res.writeHead(200, { \"Content-Type\": \"application/x-ndjson; charset=utf-8\", \"Cache-Control\": \"no-store\", \"X-Accel-Buffering\": \"no\" });\n      const emit = (event: unknown) => { if (!res.destroyed) res.write(JSON.stringify(event) + \"\\n\"); };\n      try { await runAgent(prompt, emit, controller); }\n      catch { emit({ type: \"error\", text: controller.signal.aborted ? \"The run was cancelled or timed out. Try a shorter prompt.\" : \"The SDK could not finish. Check your API key, model access and the setup troubleshooting section.\" }); }\n      finally { clearTimeout(timer); busy = false; if (!res.destroyed) res.end(); }",
+    "language": "typescript"
+  },
+  {
+    "number": "07",
+    "title": "Render returned text safely",
+    "source": "src/client.ts",
+    "explanation": "The browser assigns assistant text to textContent and keeps final status separate. The stream decoder buffers partial JSON lines, so a network chunk is not assumed to be a complete message.",
+    "code": "const consume = (line: string) => {\n      if (!line.trim()) return;\n      const data = JSON.parse(line);\n      if (data.type === \"answer\") { answer += (answer ? \"\\n\\n\" : \"\") + data.text; $(\"answer\").textContent = answer; }\n      else if (data.type === \"result\") {\n        finalResult = true; $(\"status\").textContent = data.status === \"success\" ? \"Success\" : data.status;\n        $(\"cost\").textContent = \"$\" + data.costUsd.toFixed(4); $(\"turns\").textContent = String(data.turns); $(\"session\").textContent = data.sessionId;\n        if (!answer || data.status !== \"success\") $(\"answer\").textContent = data.text;\n      } else if (data.type === \"error\") { $(\"status\").textContent = \"Error\"; $(\"answer\").textContent = data.text; }\n      addEvent(data.type, data.type === \"initialized\" ? `${data.model} \u00b7 ${data.tools} tools` : data.type === \"result\" ? `${data.status} \u00b7 final SDK result` : data.type === \"answer\" ? \"Assistant text received\" : data.text || \"\");\n    };",
+    "language": "typescript"
+  }
+]

@@ -1,0 +1,56 @@
+{
+  "lanes": [
+    "Student",
+    "Browser UI",
+    "Node host",
+    "Agent SDK runtime",
+    "Claude API"
+  ],
+  "arrows": [
+    [
+      0,
+      1,
+      "1. Enter a prompt; click Run query()"
+    ],
+    [
+      1,
+      2,
+      "2. POST /api/query with JSON input"
+    ],
+    [
+      2,
+      2,
+      "3. Validate prompt and configuration"
+    ],
+    [
+      2,
+      3,
+      "4. query({ prompt, options })"
+    ],
+    [
+      3,
+      4,
+      "5. Send model request with tools disabled"
+    ],
+    [
+      4,
+      3,
+      "6. Claude response and usage"
+    ],
+    [
+      3,
+      2,
+      "7. Async SDK messages: assistant and result"
+    ],
+    [
+      2,
+      1,
+      "8. Stream selected JSON events"
+    ],
+    [
+      1,
+      0,
+      "9. Show answer, final status and evidence"
+    ]
+  ]
+}

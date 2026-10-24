@@ -1,0 +1,76 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agent SDK S01 · Explain the &lt;em&gt;source code.&lt;/em&gt;</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/code-highlighting.css"></head><body><main><div class="brand"><a href="/">How <span>Claude Agent SDK</span> Works</a><span class="badge">LESSON S01 / QUERY()</span></div><header class="hero"><div><div class="eyebrow">YOUR FIRST CLAUDE AGENT SDK APPLICATION</div><h1>Explain the <em>source code.</em></h1><p class="lead">Start with the minimal query() pattern, then connect the actual application steps to the TypeScript that implements them.</p></div><img src="/astronaut.png" alt="Course astronaut mascot"></header><nav class="nav" aria-label="Application sections"><a href="/">Application lab</a><a href="/learn.html">What you will learn</a><a href="/run.html">How to run</a><a href="/architecture.html">Architecture & workflow</a><a href="/walkthrough.html" aria-current="page">Code walkthrough</a><button id="theme" type="button">Dark mode</button></nav><section class="step"><h2>The idea in one small example</h2><p>This standalone illustration assumes the API key is already loaded into the process environment. The full app below adds validation, message projection and local web controls.</p><pre><code class="language-typescript">import { query } from &quot;@anthropic-ai/claude-agent-sdk&quot;;
+
+for await (const message of query({
+  prompt: &quot;Explain an AI agent in one sentence.&quot;,
+  options: { tools: [], maxTurns: 1 },
+})) {
+  if (message.type === &quot;result&quot;) {
+    if (message.subtype === &quot;success&quot; &amp;&amp; !message.is_error) {
+      console.log(message.result);
+    } else {
+      console.error(&quot;Query failed:&quot;, message.subtype);
+    }
+  }
+}</code></pre></section><section class="step"><span class="number">01</span><h2>Load configuration before the agent starts</h2><p>The npm command loads the local .env into the host process. query inherits the server-side API key. The browser sees only a ready flag and model name.</p><p class="source">Source: package.json</p><pre><code class="language-powershell">tsx --env-file-if-exists=.env src/server.ts</code></pre></section><section class="step"><span class="number">02</span><h2>Validate the student prompt</h2><p>Reject empty or oversized input before the SDK starts. This keeps the classroom experiment bounded.</p><p class="source">Source: src/agent.ts</p><pre><code class="language-typescript">export function validatePrompt(value: unknown): string {
+  if (typeof value !== &quot;string&quot; || !value.trim()) throw new Error(&quot;Enter a prompt first.&quot;);
+  if (value.trim().length &gt; 2000) throw new Error(&quot;Keep the prompt under 2,000 characters.&quot;);
+  return value.trim();
+}</code></pre></section><section class="step"><span class="number">03</span><h2>Call query once with explicit options</h2><p>The prompt is a string. tools: [] disables built-in tools; allowedTools: [] would only change approvals and is not the same setting. This lesson also ignores filesystem settings, configures no MCP servers or plugins, disables transcript persistence, and uses one turn with a small SDK budget. The SDK manages its model interaction; there is no manual Messages API tool loop.</p><p class="source">Source: src/agent.ts</p><pre><code class="language-typescript">const conversation = query({
+    prompt,
+    options: {
+      model: MODEL,
+      tools: [],
+      settingSources: [],
+      mcpServers: {},
+      plugins: [],
+      persistSession: false,
+      maxTurns: 1,
+      maxBudgetUsd: 0.10,
+      cwd,
+      abortController,
+    },
+  });</code></pre></section><section class="step"><span class="number">04</span><h2>Consume the async iterator</h2><p>The for-await loop reads messages from the one query call; it does not make a new query for every message. A missing result is incomplete observation. finally closes the SDK query object.</p><p class="source">Source: src/agent.ts</p><pre><code class="language-typescript">try {
+    for await (const message of conversation) {
+      for (const event of projectMessage(message)) {
+        if (event.type === &quot;result&quot;) gotResult = true;
+        emit(event);
+      }
+    }
+    if (!gotResult &amp;&amp; !abortController.signal.aborted) throw new Error(&quot;The SDK ended without a result message.&quot;);
+  } finally {
+    conversation.close();
+  }
+}</code></pre></section><section class="step"><span class="number">05</span><h2>Separate text from the final outcome</h2><p>Initialization identifies the selected model and tools. Assistant text becomes the answer. Only a result with subtype success and is_error false establishes success. Preserve other subtypes rather than relabelling them as completed.</p><p class="source">Source: src/agent.ts</p><pre><code class="language-typescript">export function projectMessage(message: SDKMessage): LabEvent[] {
+  if (message.type === &quot;system&quot; &amp;&amp; message.subtype === &quot;init&quot;) {
+    return [{ type: &quot;initialized&quot;, model: message.model, tools: message.tools.length }];
+  }
+  if (message.type === &quot;assistant&quot;) {
+    return message.message.content.flatMap((block) =&gt;
+      block.type === &quot;text&quot; ? [{ type: &quot;answer&quot; as const, text: block.text }] : [],
+    );
+  }
+  if (message.type === &quot;result&quot;) {
+    const success = message.subtype === &quot;success&quot; &amp;&amp; !message.is_error;
+    return [{ type: &quot;result&quot;, status: success ? &quot;success&quot; : message.subtype === &quot;success&quot; ? &quot;error&quot; : message.subtype,
+      text: message.subtype === &quot;success&quot; ? message.result : message.errors.join(&quot;\n&quot;),
+      sessionId: message.session_id, costUsd: message.total_cost_usd, turns: message.num_turns }];
+  }
+  return [];
+}</code></pre></section><section class="step"><span class="number">06</span><h2>Forward selected evidence to the page</h2><p>The server writes JSON lines while the SDK runs. The response close event and a 90-second timeout abort this sample’s local run; finally releases the busy flag. These controls are web-app plumbing around the simple SDK example.</p><p class="source">Source: src/server.ts</p><pre><code class="language-typescript">const controller = new AbortController();
+      const timer = setTimeout(() =&gt; controller.abort(), 90_000);
+      res.on(&quot;close&quot;, () =&gt; { if (!res.writableEnded) controller.abort(); });
+      res.writeHead(200, { &quot;Content-Type&quot;: &quot;application/x-ndjson; charset=utf-8&quot;, &quot;Cache-Control&quot;: &quot;no-store&quot;, &quot;X-Accel-Buffering&quot;: &quot;no&quot; });
+      const emit = (event: unknown) =&gt; { if (!res.destroyed) res.write(JSON.stringify(event) + &quot;\n&quot;); };
+      try { await runAgent(prompt, emit, controller); }
+      catch { emit({ type: &quot;error&quot;, text: controller.signal.aborted ? &quot;The run was cancelled or timed out. Try a shorter prompt.&quot; : &quot;The SDK could not finish. Check your API key, model access and the setup troubleshooting section.&quot; }); }
+      finally { clearTimeout(timer); busy = false; if (!res.destroyed) res.end(); }</code></pre></section><section class="step"><span class="number">07</span><h2>Render returned text safely</h2><p>The browser assigns assistant text to textContent and keeps final status separate. The stream decoder buffers partial JSON lines, so a network chunk is not assumed to be a complete message.</p><p class="source">Source: src/client.ts</p><pre><code class="language-typescript">const consume = (line: string) =&gt; {
+      if (!line.trim()) return;
+      const data = JSON.parse(line);
+      if (data.type === &quot;answer&quot;) { answer += (answer ? &quot;\n\n&quot; : &quot;&quot;) + data.text; $(&quot;answer&quot;).textContent = answer; }
+      else if (data.type === &quot;result&quot;) {
+        finalResult = true; $(&quot;status&quot;).textContent = data.status === &quot;success&quot; ? &quot;Success&quot; : data.status;
+        $(&quot;cost&quot;).textContent = &quot;$&quot; + data.costUsd.toFixed(4); $(&quot;turns&quot;).textContent = String(data.turns); $(&quot;session&quot;).textContent = data.sessionId;
+        if (!answer || data.status !== &quot;success&quot;) $(&quot;answer&quot;).textContent = data.text;
+      } else if (data.type === &quot;error&quot;) { $(&quot;status&quot;).textContent = &quot;Error&quot;; $(&quot;answer&quot;).textContent = data.text; }
+      addEvent(data.type, data.type === &quot;initialized&quot; ? `${data.model} · ${data.tools} tools` : data.type === &quot;result&quot; ? `${data.status} · final SDK result` : data.type === &quot;answer&quot; ? &quot;Assistant text received&quot; : data.text || &quot;&quot;);
+    };</code></pre></section><section class="note"><strong>Check your understanding:</strong> Run a short question, then match initialized → answer → result to projectMessage(). Explain why an assistant message alone is insufficient. Name the option that removes built-in tools.</section><div class="actions"><a class="button" href="/architecture.html">← UML sequence</a><a class="button" href="/">Try a query →</a></div><footer>CLAUDE AGENT SDK · S01 · ONE QUERY, ONE OBSERVED RESULT<br>TypeScript · local runtime · API key stays on the server</footer></main><script src="/navigation.js"></script><script src="/prism.js"></script><script src="/code-highlighting.js"></script></body></html>
