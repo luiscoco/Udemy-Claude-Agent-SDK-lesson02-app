@@ -242,3 +242,8 @@ The repository name uses lesson02 as requested; this sample is labelled S01 insi
 ## Repository contents
 
 This repository includes the TypeScript application, all five student pages, coloured code snippets, UML SVG, stylesheet, mascot, browser assets, tests, configuration template and lockfile. The documentation generator works with these bundled assets and needs no sibling lesson. Videos, audio, PowerPoint files, teaching-material, node_modules, runtime data and the real .env stay local and are excluded from Git.
+
+
+## Code at every UML workflow step
+
+Every numbered architecture step includes a syntax-coloured source excerpt, its filename and line range, and an explanation connecting the code to that step. scripts/workflow-snippets.py extracts the excerpts from the shipped source on regeneration. SDK-managed operations show the real configuration or observation boundary, with the distinction explained.

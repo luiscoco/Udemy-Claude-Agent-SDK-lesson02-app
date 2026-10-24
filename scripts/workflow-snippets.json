@@ -1,0 +1,53 @@
+[
+  {
+    "source": "src/client.ts",
+    "explanation": "Submitting the form starts the local UI workflow and resets the previous run. No query is started merely by editing the prompt.",
+    "start": "$(\"form\").addEventListener(\"submit\"",
+    "end": "  let answer ="
+  },
+  {
+    "source": "src/client.ts",
+    "explanation": "The browser sends JSON containing only the prompt to its own server. The API key stays in the host process.",
+    "start": "    const response = await fetch("
+  },
+  {
+    "source": "src/server.ts",
+    "explanation": "The server rejects requests without configuration, then validates the submitted prompt before starting a run. This excerpt is the prompt-validation boundary.",
+    "start": "      const prompt = validatePrompt(JSON.parse(body).prompt);"
+  },
+  {
+    "source": "src/agent.ts",
+    "explanation": "The agent function calls query once. These options belong to that single SDK invocation; the complete function closes the conversation in finally.",
+    "start": "  const conversation = query({",
+    "end": "  try {"
+  },
+  {
+    "source": "src/agent.ts",
+    "explanation": "These actual properties configure the SDK-managed model request. tools: [] removes built-in tools, while the remaining settings disable filesystem configuration, MCP and plugins. The SDK handles transport.",
+    "start": "      model: MODEL,",
+    "end": "      persistSession:"
+  },
+  {
+    "source": "src/agent.ts",
+    "explanation": "This result projection reads the real model outcome and usage-related fields returned through the SDK. It is the application observation boundary, not a custom Claude API implementation.",
+    "start": "  if (message.type === \"result\") {",
+    "end": "  return [];"
+  },
+  {
+    "source": "src/agent.ts",
+    "explanation": "The for-await loop consumes SDK messages and emits their explicit student-facing projection. It does not invoke a new agent for each message.",
+    "start": "    for await (const message of conversation) {",
+    "end": "    if (!gotResult"
+  },
+  {
+    "source": "src/server.ts",
+    "explanation": "The server writes each selected event as one JSON line. Private runtime configuration and credentials are not included in this projection.",
+    "start": "      const emit ="
+  },
+  {
+    "source": "src/client.ts",
+    "explanation": "The UI updates success from the final result and shows its cost, turn count and session. Intermediate answer text alone does not mark completion.",
+    "start": "        finalResult = true;",
+    "end": "      } else if (data.type === \"error\")"
+  }
+]

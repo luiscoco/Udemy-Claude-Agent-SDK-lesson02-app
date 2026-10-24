@@ -52,5 +52,97 @@
       0,
       "9. Show answer, final status and evidence"
     ]
+  ],
+  "steps": [
+    {
+      "number": 1,
+      "source": "src/client.ts",
+      "firstLine": 17,
+      "lastLine": 21,
+      "code": "$(\"form\").addEventListener(\"submit\", async (event) => {\n  event.preventDefault(); if (running) return;\n  running = true; finalResult = false; ($(\"run\") as HTMLButtonElement).disabled = true;\n  $(\"answer\").textContent = \"\"; $(\"events\").replaceChildren(); $(\"status\").textContent = \"Running\";\n  $(\"cost\").textContent = \"\u2014\"; $(\"turns\").textContent = \"\u2014\"; $(\"session\").textContent = \"\u2014\";",
+      "explanation": "Submitting the form starts the local UI workflow and resets the previous run. No query is started merely by editing the prompt.",
+      "language": "typescript",
+      "sourceSHA256": "02f4473fbcc863afa1dddfe2acccf31864173f3fec1fbeec480c91cb09a62926"
+    },
+    {
+      "number": 2,
+      "source": "src/client.ts",
+      "firstLine": 24,
+      "lastLine": 24,
+      "code": "const response = await fetch(\"/api/query\", { method: \"POST\", headers: { \"Content-Type\": \"application/json\" }, body: JSON.stringify({ prompt: ($(\"prompt\") as HTMLTextAreaElement).value }) });",
+      "explanation": "The browser sends JSON containing only the prompt to its own server. The API key stays in the host process.",
+      "language": "typescript",
+      "sourceSHA256": "02f4473fbcc863afa1dddfe2acccf31864173f3fec1fbeec480c91cb09a62926"
+    },
+    {
+      "number": 3,
+      "source": "src/server.ts",
+      "firstLine": 45,
+      "lastLine": 45,
+      "code": "const prompt = validatePrompt(JSON.parse(body).prompt);",
+      "explanation": "The server rejects requests without configuration, then validates the submitted prompt before starting a run. This excerpt is the prompt-validation boundary.",
+      "language": "typescript",
+      "sourceSHA256": "5136b0953d21bdab227577c46a8877b538b81e9ef08b5748d2c42a752aeccebd"
+    },
+    {
+      "number": 4,
+      "source": "src/agent.ts",
+      "firstLine": 46,
+      "lastLine": 60,
+      "code": "const conversation = query({\n  prompt,\n  options: {\n    model: MODEL,\n    tools: [],\n    settingSources: [],\n    mcpServers: {},\n    plugins: [],\n    persistSession: false,\n    maxTurns: 1,\n    maxBudgetUsd: 0.10,\n    cwd,\n    abortController,\n  },\n});",
+      "explanation": "The agent function calls query once. These options belong to that single SDK invocation; the complete function closes the conversation in finally.",
+      "language": "typescript",
+      "sourceSHA256": "10fa8edb4c5bbe9f8bbf06dcac192ac2f7f23a1478a296776f983261634dbd96"
+    },
+    {
+      "number": 5,
+      "source": "src/agent.ts",
+      "firstLine": 49,
+      "lastLine": 53,
+      "code": "model: MODEL,\ntools: [],\nsettingSources: [],\nmcpServers: {},\nplugins: [],",
+      "explanation": "These actual properties configure the SDK-managed model request. tools: [] removes built-in tools, while the remaining settings disable filesystem configuration, MCP and plugins. The SDK handles transport.",
+      "language": "typescript",
+      "sourceSHA256": "10fa8edb4c5bbe9f8bbf06dcac192ac2f7f23a1478a296776f983261634dbd96"
+    },
+    {
+      "number": 6,
+      "source": "src/agent.ts",
+      "firstLine": 30,
+      "lastLine": 35,
+      "code": "if (message.type === \"result\") {\n  const success = message.subtype === \"success\" && !message.is_error;\n  return [{ type: \"result\", status: success ? \"success\" : message.subtype === \"success\" ? \"error\" : message.subtype,\n    text: message.subtype === \"success\" ? message.result : message.errors.join(\"\\n\"),\n    sessionId: message.session_id, costUsd: message.total_cost_usd, turns: message.num_turns }];\n}",
+      "explanation": "This result projection reads the real model outcome and usage-related fields returned through the SDK. It is the application observation boundary, not a custom Claude API implementation.",
+      "language": "typescript",
+      "sourceSHA256": "10fa8edb4c5bbe9f8bbf06dcac192ac2f7f23a1478a296776f983261634dbd96"
+    },
+    {
+      "number": 7,
+      "source": "src/agent.ts",
+      "firstLine": 62,
+      "lastLine": 67,
+      "code": "for await (const message of conversation) {\n  for (const event of projectMessage(message)) {\n    if (event.type === \"result\") gotResult = true;\n    emit(event);\n  }\n}",
+      "explanation": "The for-await loop consumes SDK messages and emits their explicit student-facing projection. It does not invoke a new agent for each message.",
+      "language": "typescript",
+      "sourceSHA256": "10fa8edb4c5bbe9f8bbf06dcac192ac2f7f23a1478a296776f983261634dbd96"
+    },
+    {
+      "number": 8,
+      "source": "src/server.ts",
+      "firstLine": 52,
+      "lastLine": 52,
+      "code": "const emit = (event: unknown) => { if (!res.destroyed) res.write(JSON.stringify(event) + \"\\n\"); };",
+      "explanation": "The server writes each selected event as one JSON line. Private runtime configuration and credentials are not included in this projection.",
+      "language": "typescript",
+      "sourceSHA256": "5136b0953d21bdab227577c46a8877b538b81e9ef08b5748d2c42a752aeccebd"
+    },
+    {
+      "number": 9,
+      "source": "src/client.ts",
+      "firstLine": 32,
+      "lastLine": 34,
+      "code": "finalResult = true; $(\"status\").textContent = data.status === \"success\" ? \"Success\" : data.status;\n$(\"cost\").textContent = \"$\" + data.costUsd.toFixed(4); $(\"turns\").textContent = String(data.turns); $(\"session\").textContent = data.sessionId;\nif (!answer || data.status !== \"success\") $(\"answer\").textContent = data.text;",
+      "explanation": "The UI updates success from the final result and shows its cost, turn count and session. Intermediate answer text alone does not mark completion.",
+      "language": "typescript",
+      "sourceSHA256": "02f4473fbcc863afa1dddfe2acccf31864173f3fec1fbeec480c91cb09a62926"
+    }
   ]
 }
